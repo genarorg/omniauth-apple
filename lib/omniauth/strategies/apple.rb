@@ -139,7 +139,7 @@ module OmniAuth
         }
         headers = { kid: options.key_id }
 
-        ::JSON::JWT.encode(payload, private_key, 'ES256', headers)
+        ::JWT.encode(payload, private_key, 'ES256', headers)
       end
 
       def private_key
