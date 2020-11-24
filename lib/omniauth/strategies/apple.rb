@@ -2,6 +2,7 @@
 
 require 'omniauth-oauth2'
 require 'net/https'
+require 'json/jwt'
 
 module OmniAuth
   module Strategies
@@ -59,16 +60,9 @@ module OmniAuth
       def id_info
         @id_info ||= if request.params&.key?('id_token') || access_token&.params&.key?('id_token')
                        id_token = request.params['id_token'] || access_token.params['id_token']
-                       jwt_options = {
-                         verify_iss: true,
-                         iss: 'https://appleid.apple.com',
-                         verify_iat: true,
-                         verify_aud: true,
-                         aud: [options.client_id].concat(options.authorized_client_ids),
-                         algorithms: ['RS256'],
-                         jwks: fetch_jwks
-                       }
-                       payload, _header = ::JWT.decode(id_token, nil, true, jwt_options)
+                       payload = ::JSON::JWT.decode(id_token, ::JSON::JWK::Set.new(fetch_jwks))
+                       verify_issuer!(payload)
+                       verify_payload!(payload)
                        verify_nonce!(payload)
                        payload
                      end
@@ -86,6 +80,19 @@ module OmniAuth
         return if payload['nonce'] && payload['nonce'] == stored_nonce
 
         fail!(:nonce_mismatch, CallbackError.new(:nonce_mismatch, 'nonce mismatch'))
+      end
+
+      def verify_issuer!(payload)
+        raise(CallbackError, 'Invalid Issuer') if payload['iss'] != 'https://appleid.apple.com'
+      end
+
+      def verify_payload!(payload)
+        unless [options.client_id].concat(options.authorized_client_ids).include?(payload['aud']) &&
+               payload['sub'].present? &&
+               Time.at(payload['iat']).between?(30.seconds.ago, Time.now) &&
+               Time.at(payload['exp']) > Time.now
+          fail!(:verification_failed, CallbackError.new(:verification_failed, 'one or more payload attributes failed validation'))
+        end
       end
 
       def client_id
@@ -132,7 +139,7 @@ module OmniAuth
         }
         headers = { kid: options.key_id }
 
-        ::JWT.encode(payload, private_key, 'ES256', headers)
+        ::JSON::JWT.encode(payload, private_key, 'ES256', headers)
       end
 
       def private_key

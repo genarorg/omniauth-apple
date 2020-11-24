@@ -277,10 +277,10 @@ describe OmniAuth::Strategies::Apple do
       end
 
       context 'issued by invalid issuer' do
-        it 'raises JWT::InvalidIssuerError' do
+        it 'raises CallbackError' do
           id_token_payload['iss'] = 'https://appleid.badguy.com'
           request.params.merge!('id_token' => id_token)
-          expect { subject.extra }.to raise_error(JWT::InvalidIssuerError)
+          expect { subject.extra }.to raise_error(OmniAuth::Strategies::OAuth2::CallbackError, 'Invalid Issuer')
         end
       end
 
